@@ -1,0 +1,58 @@
+@echo off
+REM Author: Harish Natrayan (Converted to Batch Script)
+
+REM Prompt for inputs
+set /p file="Enter repo list file: "
+set /p git_token="Enter your Git token: "
+set /p projectKey="Enter Project Key: "
+set /p output_dir="Enter Result Directory: "
+
+echo.
+echo Creating output directory...
+if not exist "%output_dir%" mkdir "%output_dir%"
+
+echo.
+for /f "tokens=*" %%A in (%file%) do (
+    for /f "tokens=1,2 delims= " %%B in ("%%A") do (
+        set "branch_name=%%B"
+        set "repo_url=%%C"
+
+        echo Processing branch: %%B, repo: %%C
+
+        set "repo_name=%%~nC"
+        set "repo_with_token=%%C"
+        set repo_with_token=!repo_with_token:https://=https://%git_token%@!
+
+        echo Cloning repository: !repo_with_token! for branch: !branch_name!
+        git clone -b !branch_name! !repo_with_token! !repo_name!
+
+        if exist "!repo_name!" (
+            echo Repository cloned successfully.
+
+            if exist "!repo_name!\pom.xml" (
+                echo Found pom.xml. Processing...
+
+                set "repo_output_dir=%output_dir%!repo_name!"
+                if not exist "!repo_output_dir!" mkdir "!repo_output_dir!"
+
+                copy "!repo_name!\pom.xml" "!repo_output_dir!\pom.xml"
+
+                cd "!repo_output_dir!"
+                jf audit --project=%projectKey% --mvn=true --format=simple-json >> "!repo_name!.json"
+
+                set path=%cd%
+                java -jar Jfrog_Audit_converter.jar "!repo_name!" "!path!" "!repo_name!.json"
+
+                echo Completed processing repository: !repo_name!
+                cd ..
+            ) else (
+                echo No pom.xml found in repository: !repo_name!
+            )
+
+            rmdir /s /q "!repo_name!"
+        ) else (
+            echo Failed to clone repository: !repo_name!
+        )
+    )
+)
+echo All repositories processed. Results saved in "%output_dir%\result.csv".
