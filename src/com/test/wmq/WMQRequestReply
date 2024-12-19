@@ -1,0 +1,161 @@
+Here’s a simple Java example using WebSphere MQ (WMQ) to perform a request-reply pattern. In this example, we’ll have a producer (requestor) that sends a request message to a queue, and a consumer (responder) that listens for that request and replies to the requestor via a reply-to queue.
+
+Make sure you have the IBM MQ client libraries set up in your classpath to run this code.
+
+Requestor (Sender) - Java Code:
+
+import com.ibm.mq.MQQueueManager;
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.MQMessage;
+import com.ibm.mq.MQPutMessageOptions;
+import com.ibm.mq.MQC;
+import com.ibm.mq.MQGetMessageOptions;
+
+public class MQRequestor {
+    public static void main(String[] args) {
+        MQQueueManager queueManager = null;
+        MQQueue requestQueue = null;
+        MQQueue replyQueue = null;
+        MQMessage requestMessage = null;
+        MQMessage replyMessage = null;
+
+        try {
+            // Create MQ connection
+            String qManagerName = "QM1";  // Replace with your Queue Manager name
+            String requestQueueName = "REQUEST.QUEUE";  // Replace with your request queue name
+            String replyQueueName = "REPLY.QUEUE";  // Replace with your reply queue name
+
+            queueManager = new MQQueueManager(qManagerName);
+
+            // Access the request queue
+            requestQueue = queueManager.accessQueue(requestQueueName, MQC.MQOO_OUTPUT | MQC.MQOO_INQUIRE);
+
+            // Access the reply queue
+            replyQueue = queueManager.accessQueue(replyQueueName, MQC.MQOO_INPUT_EXCLUSIVE);
+
+            // Create the request message
+            requestMessage = new MQMessage();
+            requestMessage.writeUTF("Hello, please reply!");
+
+            // Set the reply-to queue
+            requestMessage.replyToQueue = replyQueue;
+
+            // Send the request message
+            MQPutMessageOptions pmo = new MQPutMessageOptions();
+            requestQueue.put(requestMessage, pmo);
+            System.out.println("Request sent.");
+
+            // Wait for the reply message
+            MQGetMessageOptions gmo = new MQGetMessageOptions();
+            gmo.options = MQC.MQGMO_WAIT | MQC.MQGMO_CONVERT;
+            gmo.waitInterval = 5000;  // Wait for 5 seconds
+
+            // Get the reply
+            replyMessage = new MQMessage();
+            replyQueue.get(replyMessage, gmo);
+
+            // Read the reply
+            String reply = replyMessage.readUTF();
+            System.out.println("Reply received: " + reply);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (requestQueue != null) requestQueue.close();
+                if (replyQueue != null) replyQueue.close();
+                if (queueManager != null) queueManager.disconnect();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
+Responder (Receiver) - Java Code:
+
+import com.ibm.mq.MQQueueManager;
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.MQMessage;
+import com.ibm.mq.MQC;
+import com.ibm.mq.MQGetMessageOptions;
+import com.ibm.mq.MQPutMessageOptions;
+
+public class MQResponder {
+    public static void main(String[] args) {
+        MQQueueManager queueManager = null;
+        MQQueue requestQueue = null;
+        MQQueue replyQueue = null;
+        MQMessage requestMessage = null;
+        MQMessage replyMessage = null;
+
+        try {
+            // Create MQ connection
+            String qManagerName = "QM1";  // Replace with your Queue Manager name
+            String requestQueueName = "REQUEST.QUEUE";  // Replace with your request queue name
+            String replyQueueName = "REPLY.QUEUE";  // Replace with your reply queue name
+
+            queueManager = new MQQueueManager(qManagerName);
+
+            // Access the request queue
+            requestQueue = queueManager.accessQueue(requestQueueName, MQC.MQOO_INPUT_EXCLUSIVE);
+
+            // Access the reply queue
+            replyQueue = queueManager.accessQueue(replyQueueName, MQC.MQOO_OUTPUT);
+
+            // Create the message object for receiving the request
+            requestMessage = new MQMessage();
+
+            // Create the message options for receiving the request
+            MQGetMessageOptions gmo = new MQGetMessageOptions();
+            gmo.options = MQC.MQGMO_WAIT | MQC.MQGMO_CONVERT;
+            gmo.waitInterval = 5000;  // Wait for 5 seconds
+
+            // Get the request message
+            requestQueue.get(requestMessage, gmo);
+
+            // Read the request message
+            String request = requestMessage.readUTF();
+            System.out.println("Request received: " + request);
+
+            // Create a response message
+            replyMessage = new MQMessage();
+            replyMessage.writeUTF("Reply: Hello, I received your message!");
+
+            // Set the reply-to queue from the request message
+            MQQueue replyToQueue = requestMessage.replyToQueue;
+
+            // Send the reply message to the reply-to queue
+            MQPutMessageOptions pmo = new MQPutMessageOptions();
+            replyToQueue.put(replyMessage, pmo);
+            System.out.println("Reply sent.");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (requestQueue != null) requestQueue.close();
+                if (replyQueue != null) replyQueue.close();
+                if (queueManager != null) queueManager.disconnect();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
+Key Points:
+	1.	Requestor: Sends a request message to a queue and waits for a response in a specified reply-to queue.
+	2.	Responder: Listens for a message from the request queue, processes it, and sends a reply back to the queue specified in the request’s replyToQueue property.
+	3.	Message Options:
+	•	MQGMO_WAIT ensures that the consumer waits for a message to arrive if the queue is empty.
+	•	MQGMO_CONVERT ensures that the message data is properly converted to a readable format (like UTF).
+	4.	Queue Access:
+	•	MQOO_INPUT_EXCLUSIVE is used to get exclusive access to the input queue in the consumer.
+	•	MQOO_OUTPUT is used for sending messages to the output queue in the producer.
+
+Prerequisites:
+	•	Install and configure IBM MQ Client and ensure your queues (REQUEST.QUEUE, REPLY.QUEUE) exist in the queue manager (QM1 in the example).
+	•	Set your MQ server connection details (host, port, etc.) as required.
+
+This example provides the core flow, but error handling and optimization for production environments should be implemented for more robustness.
